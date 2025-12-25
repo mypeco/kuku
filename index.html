@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>九九マスター - レコードデザイン</title>
+    <title>九九マスター</title>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -97,11 +97,31 @@
             } else if (dan === 'ALL') {
                 const all = [];
                 for(let d=1; d<=9; d++) for(let m=1; m<=9; m++) all.push({d, m});
+                
+                // 完全ランダム抽出（count数分だけ）
+                // まず全組み合わせをシャッフル
                 for (let i = all.length - 1; i > 0; i--) {
                     const j = Math.floor(Math.random() * (i + 1));
                     [all[i], all[j]] = [all[j], all[i]];
                 }
-                qs = all.slice(0, count);
+                
+                // 足りない場合は補充（100問などの場合、81問以上になるため）
+                qs = [];
+                while(qs.length < count) {
+                    if (all.length > 0) {
+                        qs.push(all.pop());
+                    } else {
+                        // allが空になったら再補充
+                        const refill = [];
+                        for(let d=1; d<=9; d++) for(let m=1; m<=9; m++) refill.push({d, m});
+                        // シャッフルしてallに入れる
+                        for (let i = refill.length - 1; i > 0; i--) {
+                            const j = Math.floor(Math.random() * (i + 1));
+                            [refill[i], refill[j]] = [refill[j], refill[i]];
+                        }
+                        all.push(...refill);
+                    }
+                }
             } else {
                 const d = parseInt(dan);
                 const base = [1,2,3,4,5,6,7,8,9].map(m => ({d, m}));
@@ -120,13 +140,31 @@
 
         const ReadingToggleBtn = ({ show, onToggle }) => (
             <button onClick={onToggle} className={`w-12 h-12 rounded-xl flex flex-col items-center justify-center transition-all shadow-sm ${show ? 'bg-emerald-100 text-emerald-600 border-2 border-emerald-200' : 'bg-slate-50 text-slate-400 border-2 border-slate-100'}`}>
-                <span className="text-sm font-black leading-none mb-0.5">文字</span>
+                <span className="text-[10px] font-black leading-none mb-0.5">よみかた</span>
                 <span className="text-[10px] font-bold leading-none">{show ? 'あり' : 'なし'}</span>
             </button>
         );
 
         // 保護者画面（デザインリニューアル版）
         const Dashboard = ({ history, onClose, onDelete, onDeleteAll }) => {
+            // 表示用のモードテキストを生成する関数
+            const getModeDisplay = (h) => {
+                if (h.label.includes('特訓')) return { text: '苦手特訓', color: 'bg-rose-400' };
+                if (h.label.includes('ランダム')) return { text: h.label.replace('ランダム', 'ランダム '), color: 'bg-orange-400' };
+                
+                // 段の場合
+                const danNum = h.label.replace('のだん','').replace('の段','');
+                let subText = '';
+                
+                // subMode（詳細モード）に基づいた表示
+                if (h.subMode === 'reverse') subText = 'ぎゃくじゅん';
+                else if (h.subMode === 'shuffle') subText = 'バラバラ';
+                else if (h.subMode === 'normal') subText = 'じゅんばん';
+
+                const finalText = subText ? `${danNum}の段 ${subText}` : `${danNum}の段`;
+                return { text: finalText, color: 'bg-emerald-500' };
+            };
+
             return (
                 <div className="fixed inset-0 bg-slate-50 z-50 flex flex-col animate-pop">
                     <header className="bg-white p-4 flex justify-between items-center shadow-sm shrink-0 z-10">
@@ -142,7 +180,7 @@
                         <div>日時</div>
                         <div>正答率</div>
                         <div>タイム</div>
-                        <div>ヒント</div>
+                        <div>入力</div>
                     </div>
 
                     <div className="flex-1 scroll-y p-4">
@@ -157,17 +195,18 @@
                                 {history.slice().reverse().map(h => {
                                     const hasErr = h.wrongList && h.wrongList.length > 0;
                                     const dateObj = new Date(h.date);
+                                    const modeInfo = getModeDisplay(h);
                                     
                                     return (
                                         <div key={h.id} className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100 relative group">
-                                            {/* 削除ボタン（ホバーまたはタップしやすい位置にひっそりと） */}
+                                            {/* 削除ボタン */}
                                             <button onClick={() => onDelete(h.id)} className="absolute top-2 right-2 text-slate-200 hover:text-rose-400 p-2"><Icons.Trash className="w-4 h-4" /></button>
 
                                             <div className="grid grid-cols-[1fr_2fr_1.5fr_1.5fr_1fr] gap-2 items-center text-center">
                                                 {/* スタンプ */}
                                                 <div className="text-3xl text-left">{h.stamp}</div>
                                                 
-                                                {/* 日時 */}
+                                                {/* 日時 & 詳細モード */}
                                                 <div className="flex flex-col items-center text-xs text-slate-500 leading-tight">
                                                     <span className="font-bold text-slate-700 text-sm">
                                                         {dateObj.getMonth()+1}/{dateObj.getDate()}
@@ -175,9 +214,9 @@
                                                     <span>
                                                         {dateObj.getHours().toString().padStart(2,'0')}:{dateObj.getMinutes().toString().padStart(2,'0')}
                                                     </span>
-                                                    {/* モードラベル */}
-                                                    <span className={`text-[9px] px-1 rounded text-white mt-1 ${h.modeType === 'tenkey' ? 'bg-sky-400' : 'bg-yellow-400'}`}>
-                                                        {h.label.includes('だん') ? h.label.replace('のだん','') + '段' : (h.label.includes('特訓') ? '特訓' : 'ランダム')}
+                                                    {/* モード詳細バッジ */}
+                                                    <span className={`text-[9px] px-1.5 py-0.5 rounded text-white mt-1 w-max max-w-full whitespace-pre-wrap text-center leading-tight ${modeInfo.color}`}>
+                                                        {modeInfo.text}
                                                     </span>
                                                 </div>
 
@@ -191,15 +230,11 @@
                                                     {Math.round(parseFloat(h.timeStr))}<span className="text-xs">秒</span>
                                                 </div>
 
-                                                {/* ヒント（文字あり） */}
+                                                {/* 入力方法 */}
                                                 <div className="flex justify-center">
-                                                    {h.isReadingOn === true ? (
-                                                        <div className="w-3 h-3 rounded-full bg-orange-400 shadow-sm" title="文字あり"></div>
-                                                    ) : h.isReadingOn === false ? (
-                                                        <div className="w-3 h-3 rounded-full bg-slate-200" title="文字なし"></div>
-                                                    ) : (
-                                                        <span className="text-xs text-slate-300">-</span>
-                                                    )}
+                                                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${h.modeType === 'flash' ? 'bg-amber-100 text-amber-700' : 'bg-cyan-100 text-cyan-700'}`}>
+                                                        {h.modeType === 'flash' ? 'フラッシュ' : 'テンキー'}
+                                                    </span>
                                                 </div>
                                             </div>
 
@@ -380,8 +415,9 @@
 
             return (
                 <div className="flex flex-col items-center justify-center h-full bg-orange-50 animate-pop p-6 relative">
-                    <button onClick={onOpenParent} className="absolute top-4 right-4 p-2 bg-white rounded-full text-slate-400 hover:text-emerald-500 shadow-sm border border-slate-100">
-                        <Icons.User className="w-6 h-6" />
+                    <button onClick={onOpenParent} className="absolute top-4 right-4 flex items-center gap-1.5 px-3 py-2 bg-white rounded-full text-slate-500 hover:text-emerald-600 shadow-sm border border-slate-200 text-xs font-bold transition-all">
+                        <Icons.User className="w-4 h-4" />
+                        記録を見る
                     </button>
                     <div className="text-[7rem] md:text-[9rem] animate-bounce mb-2 filter drop-shadow-md select-none">{stamp}</div>
                     <h2 className="text-2xl md:text-3xl font-black text-orange-600 mb-6">{msg}</h2>
@@ -452,15 +488,17 @@
 
                 const label = selDan === 'WEAKNESS' ? '苦手特訓' : (tab === 'DAN' ? `${selDan}のだん` : `ランダム${qCount}`);
 
-                // ヒント情報(showReading)を保存するように追加
+                // ヒント情報(showReading)とサブモードを保存
                 const isReadingOn = (tab === 'DAN' && selDan !== 'WEAKNESS') ? showReading : null;
+                const currentSubMode = (tab === 'DAN' && selDan !== 'WEAKNESS') ? subMode : null;
 
                 const rec = {
                     id: Date.now(), date: Date.now(), modeType,
                     label,
                     timeStr: `${(res.timeMs/1000).toFixed(1)}`,
                     accuracy, stamp, wrongList: res.wrongList,
-                    isReadingOn // ここに保存
+                    isReadingOn,
+                    subMode: currentSubMode
                 };
                 setHistory(prev => [...prev, rec]);
                 setLastResult({...res, ...rec});
@@ -475,10 +513,11 @@
                     {view === 'MENU' && (
                         <div className="flex flex-col h-full animate-pop">
                             <header className="flex justify-between items-center p-4 shrink-0 relative">
-                                <button onClick={() => setShowParent(true)} className="p-2 text-slate-300 hover:text-emerald-500 bg-slate-50 rounded-full">
-                                    <Icons.User className="w-6 h-6"/>
+                                <button onClick={() => setShowParent(true)} className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 text-slate-500 rounded-full text-xs font-bold hover:bg-emerald-50 hover:text-emerald-600 transition-all">
+                                    <Icons.User className="w-4 h-4"/>
+                                    記録を見る
                                 </button>
-                                <h1 className="text-2xl font-black text-emerald-500 tracking-tight absolute left-1/2 -translate-x-1/2 pointer-events-none">九九マスター</h1>
+                                <h1 className="text-2xl font-black text-emerald-500 tracking-tight absolute left-1/2 -translate-x-1/2 pointer-events-none">⭐ 九九マスター ⭐</h1>
                                 <div className="w-12 flex justify-end">
                                     {tab === 'DAN' && (
                                         <ReadingToggleBtn show={showReading} onToggle={() => setShowReading(!showReading)} />
@@ -489,7 +528,7 @@
                             <div className="px-6 shrink-0 mb-2">
                                 <div className="flex p-1 bg-slate-100 rounded-2xl">
                                     <button onClick={() => { setTab('DAN'); setSelDan(1); }} className={`flex-1 py-2 rounded-xl font-bold text-sm transition-all ${tab === 'DAN' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-400'}`}>れんしゅう (だん)</button>
-                                    <button onClick={() => { setTab('CHALLENGE'); setSelDan('ALL'); }} className={`flex-1 py-2 rounded-xl font-bold text-sm transition-all ${tab === 'CHALLENGE' ? 'bg-white text-orange-500 shadow-sm' : 'text-slate-400'}`}>チャレンジ</button>
+                                    <button onClick={() => { setTab('CHALLENGE'); setSelDan('ALL'); }} className={`flex-1 py-2 rounded-xl font-bold text-sm transition-all ${tab === 'CHALLENGE' ? 'bg-white text-orange-500 shadow-sm' : 'text-slate-400'}`}>🔥チャレンジ🔥</button>
                                 </div>
                             </div>
 
@@ -516,7 +555,7 @@
                                     </>
                                 ) : (
                                     <div className="space-y-3">
-                                        {[10, 20, 50].map(c => (
+                                        {[10, 20, 50, 100].map(c => (
                                             <button key={c} onClick={() => { setSelDan('ALL'); setQCount(c); }} className={`w-full py-3 rounded-2xl font-black text-xl border-b-4 active:scale-95 transition-all ${selDan === 'ALL' && qCount === c ? 'bg-orange-500 text-white border-orange-700 shadow-lg' : 'bg-white border-orange-100 text-orange-300'}`}>
                                                 ランダム {c}もん
                                             </button>
